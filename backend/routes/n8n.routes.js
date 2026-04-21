@@ -10,6 +10,33 @@ const router = express.Router();
 const logger = require('../utils/logger');
 const { sendSuccess, HttpStatus } = require('../utils/response');
 const catchAsync = require('../utils/catchAsync');
+const SyllabusLibrary = require('../models/SyllabusLibrary');
+
+const normalizeSyllabusStatus = (status) => {
+  if (!status) {
+    return null;
+  }
+
+  const normalized = String(status).trim().toUpperCase();
+
+  if (['UPLOADED', 'PROCESSING', 'READY'].includes(normalized)) {
+    return normalized;
+  }
+
+  if (['SUCCESS', 'COMPLETED', 'DONE'].includes(normalized)) {
+    return 'READY';
+  }
+
+  if (['IN_PROGRESS', 'RUNNING'].includes(normalized)) {
+    return 'PROCESSING';
+  }
+
+  if (['FAILED', 'ERROR'].includes(normalized)) {
+    return 'UPLOADED';
+  }
+
+  return null;
+};
 
 /**
  * Webhook receiver for syllabus upload completion from n8n
@@ -26,9 +53,34 @@ const handleSyllabusUploadComplete = catchAsync(async (req, res) => {
     });
   }
 
+  const existingSyllabus = await SyllabusLibrary.findById(syllabusId);
+  if (!existingSyllabus) {
+    return res.status(HttpStatus.NOT_FOUND).json({
+      success: false,
+      message: 'Syllabus not found',
+    });
+  }
+
+  const normalizedStatus = normalizeSyllabusStatus(status);
+  const updateData = {};
+
+  if (normalizedStatus) {
+    updateData.status = normalizedStatus;
+  }
+
+  const extractedText =
+    typeof req.body.extractedText === 'string' ? req.body.extractedText.trim() : '';
+  if (extractedText) {
+    updateData.extracted_text = extractedText;
+  }
+
+  const syllabus = Object.keys(updateData).length
+    ? await SyllabusLibrary.updateById(syllabusId, updateData)
+    : existingSyllabus;
+
   logger.info('n8n: Syllabus upload processing completed', {
     syllabusId,
-    status,
+    status: syllabus?.status || existingSyllabus.status,
     chunksCreated,
   });
 
@@ -42,6 +94,7 @@ const handleSyllabusUploadComplete = catchAsync(async (req, res) => {
 
   sendSuccess(res, HttpStatus.OK, 'Webhook received successfully', {
     syllabusId,
+    status: syllabus?.status || existingSyllabus.status,
     acknowledged: true,
   });
 });

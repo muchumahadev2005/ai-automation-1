@@ -293,6 +293,7 @@ const AdminDashboard: React.FC = () => {
 
     setIsUploadingSyllabus(true);
     setSyllabusError(null);
+    let uploadedSyllabusId: string | null = null;
 
     try {
       // Extract text from the selected file
@@ -305,15 +306,32 @@ const AdminDashboard: React.FC = () => {
         return;
       }
 
-      // Send to n8n webhook with the extracted text
+      const uploadedSyllabus = await adminService.uploadSyllabus({
+        subject: formState.subject,
+        branch: formState.branch,
+        department: formState.department,
+        year: formState.year,
+        file: selectedFile,
+      });
+
+      uploadedSyllabusId = uploadedSyllabus.id;
+
+      // Send to n8n webhook with metadata and extracted text
       await n8nService.uploadSyllabusToN8N({
         type: "admin",
+        syllabusId: uploadedSyllabus.id,
         branch: formState.branch,
         department: formState.department,
         year: formState.year,
         subject: formState.subject,
+        unit: "General",
         syllabusText: syllabusText,
       });
+
+      await adminService.updateSyllabusStatus(
+        uploadedSyllabus.id,
+        "PROCESSING",
+      );
 
       setFormState(initialFormState);
       setSelectedFile(null);
@@ -324,6 +342,15 @@ const AdminDashboard: React.FC = () => {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to upload syllabus";
+
+      if (uploadedSyllabusId) {
+        setSyllabusError(
+          `Syllabus saved, but n8n processing failed: ${message}`,
+        );
+        await loadSyllabusData();
+        return;
+      }
+
       setSyllabusError(message);
     } finally {
       setIsUploadingSyllabus(false);
