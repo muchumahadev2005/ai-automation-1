@@ -1,0 +1,121 @@
+{
+  "name": "phase-1-questions-generation-by-uploading-pdfs-FIXED-v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-questions",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 0],
+      "id": "webhook-id",
+      "name": "Webhook",
+      "webhookId": "86742fce-684e-4913-891c-00321ac60223"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Syllabus Context:\n{{$json[\"body\"][\"syllabus\"]}}\n\nTask: Generate exactly {{$json[\"body\"][\"count\"]}} {{$json[\"body\"][\"questionType\"]}} questions with {{$json[\"body\"][\"difficulty\"]}} difficulty.\n\nReturn ONLY valid JSON in this exact format:\n\n{\n  \"questions\": [\n    {\n      \"questionText\": \"Question here\",\n      \"options\": [\n        \"First option\",\n        \"Second option\",\n        \"Third option\",\n        \"Fourth option\"\n      ],\n      \"correctOption\": \"C\"\n    }\n  ]\n}\n\nRules:\n- ONLY JSON output, no other words.\n- Exact {{$json[\"body\"][\"count\"]}} questions.\n- Use Syllabus Context accurately.\n- 4 options per question.\n- correctOption MUST be exactly one character: A, B, C, or D.\n- Do NOT write 'Option A', just 'A'.",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [220, 0],
+      "id": "chain-1",
+      "name": "Generate Questions LLM"
+    },
+    {
+      "parameters": {
+        "model": "llama3:latest",
+        "options": {
+          "format": "json"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [220, 220],
+      "id": "ollama-model-1",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "04j55XmCXyAo6FIu",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const extractJson = (text) => {\n  try {\n    if (!text) return { questions: [] };\n    const start = text.indexOf('{');\n    const end = text.lastIndexOf('}') + 1;\n    if (start === -1 || end === 0) return { questions: [] };\n    return JSON.parse(text.substring(start, end));\n  } catch (e) {\n    return { questions: [] };\n  }\n};\n\nconst text = $input.first().json.text || \"\";\nconst data = extractJson(text);\n\nconst questions = Array.isArray(data.questions) ? data.questions : [];\n\nconst validQuestions = questions.map(q => {\n  return {\n    questionText: q.questionText,\n    options: q.options,\n    correctOption: typeof q.correctOption === 'string' ? q.correctOption.replace(/option\\s+/i, '').trim().toUpperCase() : \"\"\n  };\n}).filter(q => \n  q.questionText && \n  Array.isArray(q.options) && \n  q.options.length === 4 && \n  ['A', 'B', 'C', 'D'].includes(q.correctOption)\n);\n\nreturn [{ json: { questions: validQuestions } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 0],
+      "id": "code-1",
+      "name": "Parse and Clean JSON"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.questions ? $json : { \"questions\": [] } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [780, 0],
+      "id": "respond-1",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Generate Questions LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Questions LLM": {
+      "main": [
+        [
+          {
+            "node": "Parse and Clean JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Clean JSON": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Questions LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}
