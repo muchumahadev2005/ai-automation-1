@@ -1,0 +1,14 @@
+{
+  "json.schemaDownload.enable": false,
+  "typescript.tsserver.experimental.enableProjectDiagnostics": false,
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "/frontend/tsconfig.json",
+        "/frontend/tsconfig.app.json",
+        "/frontend/tsconfig.node.json"
+      ],
+      "url": "vscode://schemas/tsconfig"
+    }
+  ]
+}
